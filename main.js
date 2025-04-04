@@ -2,11 +2,71 @@ const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require('electro
 const path = require('path');
 const { captureScreenshot, getAllScreenshots, resetScreenshots } = require('./src/utils/screenshot');
 const { initAI, setApiKey, getCurrentProvider, extractProblemFromScreenshots, generateSolution, optimizeSolution, extractCodeFromScreenshot } = require('./src/utils/openai');
+const { exec } = require('child_process');
+const fs = require('fs');
 
 // Keep a global reference of the window object to prevent garbage collection
 let mainWindow;
 let isVisible = true;
 let preferredProvider = 'gemini';
+let isHiddenFromCapture = false;
+
+// Path to Invisiwind executable
+const invisiwindPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'Invisiwind', 'Invisiwind.exe')
+    : path.join(__dirname, 'Invisiwind', 'Invisiwind.exe');
+
+// Automatically hide this application from screen capture
+function hideFromScreenCapture() {
+    const pid = process.pid;
+    console.log(`Attempting to hide application with PID: ${pid}`);
+
+    // Check if Invisiwind executable exists
+    if (fs.existsSync(invisiwindPath)) {
+        console.log(`Invisiwind found at: ${invisiwindPath}`);
+
+        // Execute Invisiwind to hide the current process
+        exec(`"${invisiwindPath}" --hide ${pid}`, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Error hiding application: ${error.message}`);
+                return;
+            }
+            if (stderr) {
+                console.error(`Invisiwind stderr: ${stderr}`);
+                return;
+            }
+            console.log(`Application hidden from screen recording successfully.`);
+        });
+    } else {
+        console.error(`Invisiwind executable not found at: ${invisiwindPath}`);
+    }
+}
+
+// Unhide application from screen capture
+function showInScreenCapture() {
+    const pid = process.pid;
+    console.log(`Attempting to unhide application with PID: ${pid}`);
+
+    // Check if Invisiwind executable exists
+    if (fs.existsSync(invisiwindPath)) {
+        console.log(`Invisiwind found at: ${invisiwindPath}`);
+
+        // Execute Invisiwind to unhide the current process
+        exec(`"${invisiwindPath}" --unhide ${pid}`, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Error unhiding application: ${error.message}`);
+                return;
+            }
+            if (stderr) {
+                console.error(`Invisiwind stderr: ${stderr}`);
+                return;
+            }
+            console.log(`Application unhidden from screen recording successfully.`);
+        });
+    } else {
+        console.error(`Invisiwind executable not found at: ${invisiwindPath}`);
+    }
+}
 
 // Track initialization state
 let aiInitialized = false;
@@ -150,6 +210,10 @@ app.whenReady().then(() => {
     console.log('Application ready, creating window...');
     createWindow();
 
+    // Hide application from screen recording
+    hideFromScreenCapture();
+    isHiddenFromCapture = true;
+
     // Initialize with Gemini as default
     console.log('Getting current provider...');
     const currentProvider = getCurrentProvider();
@@ -164,6 +228,16 @@ app.whenReady().then(() => {
 
     globalShortcut.register('CommandOrControl+B', () => {
         toggleVisibility();
+    });
+
+    globalShortcut.register('CommandOrControl+Alt+H', () => {
+        if (isHiddenFromCapture) {
+            showInScreenCapture();
+            isHiddenFromCapture = false;
+        } else {
+            hideFromScreenCapture();
+            isHiddenFromCapture = true;
+        }
     });
 
     globalShortcut.register('CommandOrControl+H', async () => {

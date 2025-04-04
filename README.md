@@ -34,12 +34,17 @@ Interview Coder is an Electron-based desktop application that provides an invisi
    npm install
    ```
 
-3. Start the application:
+3. Invisiwind Integration:
+   - Make sure the Invisiwind folder is in the root directory of the application
+   - The application will automatically hide itself from screen recording by default
+   - Use Ctrl+Alt+H (or Command+Alt+H on macOS) to toggle screen recording visibility
+
+4. Start the application:
    ```
    npm start
    ```
 
-4. Enter your API keys in the Settings tab (OpenAI, Gemini, or both).
+5. Enter your API keys in the Settings tab (OpenAI, Gemini, or both).
 
 ## Building for Distribution
 
