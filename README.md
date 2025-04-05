@@ -1,3 +1,26 @@
+
+## TODO 
+
+- **Voice-to-Text Conversion**: 
+  - Converts the interviewer's spoken questions into text using **Web Speech API** (or a similar tool).
+  - Sends the transcribed text to an AI model for generating answers.
+  
+- **Image Input for Diagrammatic Questions**:
+  - Users can upload images or screenshots that contain diagrams (e.g., aptitude questions with graphs) to be sent to the AI for analysis.
+
+- **Customizable Keyboard Shortcuts**:
+  - Disable default browser hotkeys to avoid unwanted behaviors (e.g., Shift + R for reset, Ctrl + Arrow keys for resizing).
+
+- **Automatic Screenshot Reset**:
+  - Screenshots will be automatically reset once the task is completed.
+
+- **Code Display Enhancement**:
+  - Code snippets are displayed with syntax highlighting using **Prism.js** or **highlight.js** for better readability.
+
+- **Minimalistic and Clean UI**:
+  - User-friendly and modern design using **Tailwind CSS** or **Material UI** for a seamless experience.
+
+
 # Interview Coder
 
 Interview Coder is an Electron-based desktop application that provides an invisible AI assistant for technical coding interviews. It helps you solve coding problems in real-time while remaining undetectable during screen sharing sessions.
