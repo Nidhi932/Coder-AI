@@ -11,6 +11,8 @@ let currentProvider = 'openai'; // Track which provider is active
 
 // Gemini API keys array with fallback options
 const geminiApiKeys = [
+    'AIzaSyA_FlnLi1o3T_KtSqgHwvzRCTDQi4EhAis', // collegemailid
+    'AIzaSyDNwpWdyh3oi4181eRWrgqRmJaUYEq1xmQ', // choicecomplaint
     'AIzaSyDMov4SIWiLYrlee_2MnWt-Bhcl2kDlPLI', // Default key
     'AIzaSyAzv_BWS77Ao4Le5cCsik8-CbNq5SmZYnY', // Fallback key 1
     'AIzaSyACIxS-peJlcLYgzRtjjsLnboDYXxyOK44'  // Fallback key 2
@@ -102,7 +104,7 @@ function setApiKey(apiKey, provider = 'gemini') {
             console.log('Setting Gemini API key...');
             // Use the current Gemini API key from our array
             const geminiApiKey = getCurrentGeminiApiKey();
-            console.log('Using Gemini API key:', geminiApiKey.substring(0, 5) + '...');
+            console.log('Using Gemini API key:', geminiApiKey);
             gemini = new GoogleGenerativeAI(geminiApiKey);
             currentProvider = 'gemini';
             console.log('Gemini API key set successfully');
@@ -254,7 +256,7 @@ async function extractProblemFromScreenshots(screenshotPaths) {
 
             // Use the Gemini API with fallback mechanism
             return await executeGeminiRequestWithFallback(async (apiKey) => {
-                console.log('Using Gemini API key:', apiKey.substring(0, 5) + '...');
+                console.log('Using Gemini API key:', apiKey);
                 const generativeAI = new GoogleGenerativeAI(apiKey);
                 const model = generativeAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
@@ -414,7 +416,7 @@ async function generateSolution(problemStatement) {
             // Use Gemini with fallback mechanism
             return await executeGeminiRequestWithFallback(async (apiKey) => {
                 console.log('Setting up Gemini for solution generation');
-                console.log('Using Gemini API key:', apiKey.substring(0, 5) + '...');
+                console.log('Using Gemini API key:', apiKey);
                 const generativeAI = new GoogleGenerativeAI(apiKey);
                 const model = generativeAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
@@ -513,7 +515,7 @@ async function optimizeSolution(problemStatement, code) {
         // Use Gemini with fallback mechanism
         return await executeGeminiRequestWithFallback(async (apiKey) => {
             console.log('Setting up Gemini for solution optimization');
-            console.log('Using Gemini API key:', apiKey.substring(0, 5) + '...');
+            console.log('Using Gemini API key:', apiKey);
             const generativeAI = new GoogleGenerativeAI(apiKey);
             const model = generativeAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
@@ -587,7 +589,7 @@ async function extractCodeFromScreenshot(screenshotPath) {
         // Use Gemini with fallback mechanism
         return await executeGeminiRequestWithFallback(async (apiKey) => {
             console.log('Setting up Gemini for code extraction');
-            console.log('Using Gemini API key:', apiKey.substring(0, 5) + '...');
+            console.log('Using Gemini API key:', apiKey);
             const generativeAI = new GoogleGenerativeAI(apiKey);
             const model = generativeAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
