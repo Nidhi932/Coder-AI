@@ -11,8 +11,6 @@ let currentProvider = 'openai'; // Track which provider is active
 
 // Gemini API keys array with fallback options
 const geminiApiKeys = [
-    'AIzaSyA_FlnLi1o3T_KtSqgHwvzRCTDQi4EhAis', // collegemailid
-    'AIzaSyDNwpWdyh3oi4181eRWrgqRmJaUYEq1xmQ', // choicecomplaint
     'AIzaSyDMov4SIWiLYrlee_2MnWt-Bhcl2kDlPLI', // Default key
     'AIzaSyAzv_BWS77Ao4Le5cCsik8-CbNq5SmZYnY', // Fallback key 1
     'AIzaSyACIxS-peJlcLYgzRtjjsLnboDYXxyOK44'  // Fallback key 2
@@ -104,7 +102,7 @@ function setApiKey(apiKey, provider = 'gemini') {
             console.log('Setting Gemini API key...');
             // Use the current Gemini API key from our array
             const geminiApiKey = getCurrentGeminiApiKey();
-            console.log('Using Gemini API key:', geminiApiKey);
+            console.log('Using Gemini API key:', geminiApiKey.substring(0, 5) + '...');
             gemini = new GoogleGenerativeAI(geminiApiKey);
             currentProvider = 'gemini';
             console.log('Gemini API key set successfully');
@@ -210,28 +208,47 @@ async function executeGeminiRequestWithFallback(apiCallFn) {
  */
 async function extractProblemFromScreenshots(screenshotPaths) {
     console.log('extractProblemFromScreenshots called with paths:', screenshotPaths);
+    console.log('[AI] Screenshot paths length:', screenshotPaths?.length || 0);
+    console.log('[AI] Screenshot paths:', JSON.stringify(screenshotPaths));
 
     if (!isAIAvailable()) {
-        console.log('No AI service available');
+        console.log('[AI] No AI service available');
         return 'Error: No AI service available. Please set your OpenAI or Gemini API key.';
     }
 
     try {
         if (!screenshotPaths || screenshotPaths.length === 0) {
-            console.log('No screenshots provided');
+            console.log('[AI] No screenshots provided');
             return 'No screenshots provided. Please capture the problem using Cmd/Ctrl+H';
         }
 
+        // Verify all screenshot paths exist
+        for (const path of screenshotPaths) {
+            console.log(`[AI] Checking if screenshot exists at path: ${path}`);
+            if (!fs.existsSync(path)) {
+                console.error(`[AI] Screenshot file not found: ${path}`);
+                return `Screenshot file not found: ${path}. Please capture the problem again.`;
+            } else {
+                console.log(`[AI] Screenshot file exists: ${path}`);
+                const stats = fs.statSync(path);
+                console.log(`[AI] File size: ${stats.size} bytes`);
+            }
+        }
+
         if (currentProvider === 'openai') {
-            console.log('Using OpenAI provider for image processing');
+            console.log('[AI] Using OpenAI provider for image processing');
             // OpenAI approach
             // Prepare the screenshots
             const images = screenshotPaths.map(screenshotPath => {
+                console.log(`[AI] Reading screenshot: ${screenshotPath}`);
                 const base64Image = fs.readFileSync(screenshotPath, { encoding: 'base64' });
+                console.log(`[AI] Base64 image length: ${base64Image.length}`);
                 return `data:image/png;base64,${base64Image}`;
             });
 
             // Send request to OpenAI for analysis - improved prompt for all question types
+            console.log('[AI] Sending request to OpenAI API');
+            console.log('[AI] Using model: gpt-4-vision-preview');
             const response = await openai.chat.completions.create({
                 model: 'gpt-4-vision-preview',
                 messages: [
@@ -250,77 +267,87 @@ async function extractProblemFromScreenshots(screenshotPaths) {
                 max_tokens: 1500
             });
 
+            console.log('[AI] OpenAI response received:', response.choices[0].message.content.substring(0, 100) + '...');
             return response.choices[0].message.content;
         } else {
-            console.log('Using Gemini provider for image processing');
+            console.log('[AI] Using Gemini provider for image processing');
 
             // Use the Gemini API with fallback mechanism
             return await executeGeminiRequestWithFallback(async (apiKey) => {
-                console.log('Using Gemini API key:', apiKey);
+                console.log('[AI] Using Gemini API key:', apiKey.substring(0, 5) + '...');
+                console.log('[AI] Initializing Gemini client');
                 const generativeAI = new GoogleGenerativeAI(apiKey);
                 const model = generativeAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+                console.log('[AI] Gemini model initialized: gemini-2.0-flash');
 
                 // Load image data directly as base64 strings
-                console.log('Processing screenshot files...');
+                console.log('[AI] Processing screenshot files...');
                 const imageContents = [];
                 for (const path of screenshotPaths) {
-                    console.log('Processing screenshot path:', path);
+                    console.log('[AI] Processing screenshot path:', path);
                     if (fs.existsSync(path)) {
-                        console.log('Screenshot file exists, reading data');
+                        console.log('[AI] Screenshot file exists, reading data');
                         const base64Data = fs.readFileSync(path, { encoding: 'base64' });
-                        console.log('Base64 data length:', base64Data.length);
+                        console.log('[AI] Base64 data length:', base64Data.length);
+
+                        // Validate the base64 data is not empty
+                        if (!base64Data || base64Data.length === 0) {
+                            console.error('[AI] Empty base64 data for screenshot:', path);
+                            return "Error: Screenshot file is empty or corrupted. Please capture the problem again.";
+                        }
+
                         imageContents.push({
                             inlineData: {
                                 data: base64Data,
                                 mimeType: 'image/png'
                             }
                         });
-                        console.log('Added image content to the array');
+                        console.log('[AI] Added image content to the array');
                     } else {
-                        console.warn(`Screenshot file not found: ${path}`);
+                        console.warn(`[AI] Screenshot file not found: ${path}`);
                         // Instead of failing, create a placeholder message
                         return "Please capture a screenshot of the coding problem first.";
                     }
                 }
 
                 if (imageContents.length === 0) {
-                    console.log('No valid screenshots found');
+                    console.log('[AI] No valid screenshots found');
                     return "No valid screenshots found. Please capture the problem again.";
                 }
 
                 const prompt = "You are an expert at extracting and understanding programming problems from screenshots. Extract the coding problem, including any constraints, input/output examples, and requirements.";
-                console.log('Preparing Gemini API request with prompt and images');
-                console.log('Number of images being sent:', imageContents.length);
+                console.log('[AI] Preparing Gemini API request with prompt and images');
+                console.log('[AI] Number of images being sent:', imageContents.length);
 
-                console.log('Sending request to Gemini API...');
+                console.log('[AI] Sending request to Gemini API...');
                 const result = await model.generateContent([
                     prompt,
                     ...imageContents
                 ]);
 
-                console.log('Received response from Gemini API');
+                console.log('[AI] Received response from Gemini API');
                 const response = result.response;
                 const responseText = response.text();
-                // generate solution from responseText
-                const solution = await generateSolution(responseText);
+                console.log('[AI] Response text length:', responseText.length);
+                console.log('[AI] Response preview:', responseText.substring(0, 100) + '...');
 
                 // If we get here, this key works well, so we keep using it
-                return solution.fullSolution;
+                return responseText;
             });
         }
     } catch (error) {
-        console.error(`Error extracting problem using ${currentProvider}:`, error);
-        console.error("Error stack:", error.stack);
-        console.error("Error details:", JSON.stringify(error, null, 2));
+        console.error(`[AI] Error extracting problem using ${currentProvider}:`, error);
+        console.error("[AI] Error stack:", error.stack);
+        console.error("[AI] Error details:", JSON.stringify(error, null, 2));
 
         // Try the other provider if all Gemini keys fail
         if (currentProvider === 'gemini' && openai && openai.apiKey) {
             currentProvider = 'openai';
-            console.log('Falling back to OpenAI API');
+            console.log('[AI] Falling back to OpenAI API');
             return extractProblemFromScreenshots(screenshotPaths);
         }
 
-        return `Error analyzing screenshots. All Gemini API keys failed, and OpenAI fallback is not available. Please check your API keys.`;
+        return `Error analyzing screenshots: ${error.message}. Please try again.`;
     }
 }
 
@@ -330,15 +357,17 @@ async function extractProblemFromScreenshots(screenshotPaths) {
  * @returns {Promise<Object>} Solution object with code and explanation
  */
 async function generateSolution(problemStatement) {
-    console.log('generateSolution called with problem statement length:', problemStatement?.length);
+    console.log('[AI] generateSolution called with problem statement length:', problemStatement?.length);
+    console.log('[AI] Problem statement preview:', problemStatement?.substring(0, 100) + '...');
 
     if (!isAIAvailable()) {
-        console.log('No AI service available');
+        console.log('[AI] No AI service available');
         return { error: true, message: 'No AI service available. Please set your API key.' };
     }
 
     try {
         if (!problemStatement) {
+            console.log('[AI] No problem statement provided');
             return { error: true, message: 'No problem statement provided' };
         }
 
@@ -348,6 +377,11 @@ async function generateSolution(problemStatement) {
             problemStatement.match(/Option [A-D]/i);
         const isNumerical = problemStatement.match(/calculate|compute|find the value/i) ||
             problemStatement.match(/\d+(\.\d+)?[×÷\+\-=]/);
+
+        console.log('[AI] Problem type detection:');
+        console.log('[AI] - isProgrammingProblem:', !!isProgrammingProblem);
+        console.log('[AI] - isMCQ:', !!isMCQ);
+        console.log('[AI] - isNumerical:', !!isNumerical);
 
         let prompt;
 
@@ -364,18 +398,29 @@ async function generateSolution(problemStatement) {
                      First, analyze the problem.
                      Then, develop an efficient algorithm.
                      Finally, write clean implementation code.
-                     Problem: ${problemStatement}`;
+                     
+                     For your response:
+                     1. First explain your approach and thought process
+                     2. Provide time and space complexity analysis
+                     3. Include a clean, well-documented implementation in code
+                     
+                     Problem: ${problemStatement} provide me the code in java by explain each line by line of code and the logic behind it`;
         } else {
             // General problem
             prompt = `Analyze and solve the following problem with 100% accuracy and optimal efficiency:
                      ${problemStatement}
                      
                      Provide a detailed, step-by-step solution that addresses all requirements and edge cases.
-                     Ensure your solution is correct, efficient, and well-explained.`;
+                     Ensure your solution is correct, efficient, and well-explained.
+                     If this is a coding problem, include implementation code.`;
         }
+
+        console.log('[AI] Created prompt with length:', prompt.length);
 
         if (currentProvider === 'openai') {
             // OpenAI approach
+            console.log('[AI] Using OpenAI for solution generation');
+            console.log('[AI] Using model: gpt-4-turbo');
             const response = await openai.chat.completions.create({
                 model: 'gpt-4-turbo',
                 messages: [
@@ -392,6 +437,8 @@ async function generateSolution(problemStatement) {
             });
 
             const solution = response.choices[0].message.content;
+            console.log('[AI] OpenAI response received, length:', solution.length);
+            console.log('[AI] Solution preview:', solution.substring(0, 100) + '...');
 
             // For MCQs, ensure we only return the answer letter
             if (isMCQ) {
@@ -401,6 +448,7 @@ async function generateSolution(problemStatement) {
 
                 if (answerMatch) {
                     const answer = answerMatch[1] || answerMatch[0];
+                    console.log('[AI] Extracted MCQ answer:', answer);
                     return {
                         fullSolution: answer,
                         code: answer
@@ -408,26 +456,37 @@ async function generateSolution(problemStatement) {
                 }
             }
 
+            // Extract code section for programming problems
+            let codeSection = '';
+            if (isProgrammingProblem) {
+                console.log('[AI] Extracting code section from solution');
+                const codeSectionMatch = solution.match(/```(?:\w+)?\s*([\s\S]*?)```/);
+                codeSection = codeSectionMatch ? codeSectionMatch[1].trim() : '';
+                console.log('[AI] Extracted code section length:', codeSection.length);
+            }
+
             return {
                 fullSolution: solution,
-                code: extractCodeFromSolution(solution)
+                code: codeSection || extractCodeFromSolution(solution)
             };
         } else {
             // Use Gemini with fallback mechanism
+            console.log('[AI] Using Gemini for solution generation');
             return await executeGeminiRequestWithFallback(async (apiKey) => {
-                console.log('Setting up Gemini for solution generation');
-                console.log('Using Gemini API key:', apiKey);
+                console.log('[AI] Setting up Gemini for solution generation');
+                console.log('[AI] Using Gemini API key:', apiKey.substring(0, 5) + '...');
                 const generativeAI = new GoogleGenerativeAI(apiKey);
                 const model = generativeAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+                console.log('[AI] Gemini model initialized: gemini-2.0-flash');
 
-                console.log('Creating prompt for solution generation based on problem type');
-                console.log('Sending request to Gemini API...');
+                console.log('[AI] Creating prompt for solution generation based on problem type');
+                console.log('[AI] Sending request to Gemini API...');
                 const result = await model.generateContent(prompt);
-                console.log('Received response from Gemini API');
+                console.log('[AI] Received response from Gemini API');
 
                 const solutionText = result.response.text();
-                console.log('Solution text length:', solutionText.length);
-                console.log('Solution preview:', solutionText.substring(0, 100) + '...');
+                console.log('[AI] Solution text length:', solutionText.length);
+                console.log('[AI] Solution preview:', solutionText.substring(0, 100) + '...');
 
                 // For MCQs, ensure we only return the answer letter
                 if (isMCQ) {
@@ -437,6 +496,7 @@ async function generateSolution(problemStatement) {
 
                     if (answerMatch) {
                         const answer = answerMatch[1] || answerMatch[0];
+                        console.log('[AI] Extracted MCQ answer:', answer);
                         return {
                             fullSolution: answer,
                             code: answer,
@@ -449,13 +509,37 @@ async function generateSolution(problemStatement) {
                 // Parse solution to extract code section for programming problems
                 let codeSection = '';
                 if (isProgrammingProblem) {
-                    console.log('Extracting code section from solution text');
+                    console.log('[AI] Extracting code section from solution text');
                     const codeSectionMatch = solutionText.match(/```(?:\w+)?\s*([\s\S]*?)```/);
                     codeSection = codeSectionMatch ? codeSectionMatch[1].trim() : '';
-                    console.log('Extracted code section length:', codeSection.length);
+                    console.log('[AI] Extracted code section length:', codeSection.length);
+
+                    if (!codeSection) {
+                        console.log('[AI] No code block found, trying to find code heuristically');
+                        // Try to find code heuristically if no code block is found
+                        const lines = solutionText.split('\n');
+                        let inCodeSection = false;
+                        let codeLines = [];
+
+                        for (const line of lines) {
+                            if (!inCodeSection && (line.includes('function ') || line.includes('def ') ||
+                                line.includes('class ') || line.includes('public static'))) {
+                                inCodeSection = true;
+                            }
+
+                            if (inCodeSection) {
+                                codeLines.push(line);
+                            }
+                        }
+
+                        if (codeLines.length > 0) {
+                            codeSection = codeLines.join('\n');
+                            console.log('[AI] Heuristically extracted code section length:', codeSection.length);
+                        }
+                    }
                 }
 
-                console.log('Solution generation completed successfully');
+                console.log('[AI] Solution generation completed successfully');
                 return {
                     fullSolution: solutionText,
                     code: codeSection || solutionText,
@@ -465,9 +549,9 @@ async function generateSolution(problemStatement) {
             });
         }
     } catch (error) {
-        console.error('Error generating solution:', error);
-        console.error('Error stack:', error.stack);
-        console.error('Error details:', JSON.stringify(error, null, 2));
+        console.error('[AI] Error generating solution:', error);
+        console.error('[AI] Error stack:', error.stack);
+        console.error('[AI] Error details:', JSON.stringify(error, null, 2));
 
         return {
             error: true,
@@ -515,7 +599,7 @@ async function optimizeSolution(problemStatement, code) {
         // Use Gemini with fallback mechanism
         return await executeGeminiRequestWithFallback(async (apiKey) => {
             console.log('Setting up Gemini for solution optimization');
-            console.log('Using Gemini API key:', apiKey);
+            console.log('Using Gemini API key:', apiKey.substring(0, 5) + '...');
             const generativeAI = new GoogleGenerativeAI(apiKey);
             const model = generativeAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
@@ -589,7 +673,7 @@ async function extractCodeFromScreenshot(screenshotPath) {
         // Use Gemini with fallback mechanism
         return await executeGeminiRequestWithFallback(async (apiKey) => {
             console.log('Setting up Gemini for code extraction');
-            console.log('Using Gemini API key:', apiKey);
+            console.log('Using Gemini API key:', apiKey.substring(0, 5) + '...');
             const generativeAI = new GoogleGenerativeAI(apiKey);
             const model = generativeAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 

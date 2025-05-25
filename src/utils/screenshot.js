@@ -39,26 +39,34 @@ let screenshotPaths = [];
  * @returns {Promise<string>} Path to the saved screenshot
  */
 async function captureScreenshot() {
-    console.log('captureScreenshot called');
+    console.log('[Screenshot] captureScreenshot called');
     try {
         // Get all windows and displays
         const windows = BrowserWindow.getAllWindows();
         const mainWindow = windows[0];
         const display = screen.getPrimaryDisplay();
-        console.log('Display info:', {
+        console.log('[Screenshot] Display info:', {
+            id: display.id,
             width: display.bounds.width,
-            height: display.bounds.height
+            height: display.bounds.height,
+            scaleFactor: display.scaleFactor
         });
 
         // Store current window state
         const wasVisible = mainWindow.isVisible();
         const [currentX, currentY] = mainWindow.getPosition();
-        console.log('Current window position:', { x: currentX, y: currentY });
+        const [width, height] = mainWindow.getSize();
+        console.log('[Screenshot] Current window state:', {
+            visible: wasVisible,
+            position: { x: currentX, y: currentY },
+            size: { width, height }
+        });
 
         // Temporarily move window off-screen and hide it
+        console.log('[Screenshot] Moving window off-screen');
         mainWindow.setPosition(display.bounds.width + 100, display.bounds.height + 100);
         mainWindow.hide();
-        console.log('Window hidden for screenshot capture');
+        console.log('[Screenshot] Window hidden for screenshot capture');
 
         // Wait for any animations or transitions
         await new Promise(resolve => setTimeout(resolve, 150));
@@ -67,49 +75,71 @@ async function captureScreenshot() {
         const timestamp = Date.now();
         const filename = `screenshot_${timestamp}_${screenshotCounter++}.png`;
         const filepath = path.join(screenshotsDir, filename);
-        console.log('Will save screenshot to:', filepath);
+        console.log('[Screenshot] Will save screenshot to:', filepath);
 
         // Capture with maximum stealth
-        console.log('Taking screenshot...');
-        await screenshot({
-            filename: filepath,
-            screen: 0, // Primary screen
-            format: 'png'
-        });
-        console.log('Screenshot taken successfully');
+        console.log('[Screenshot] Taking screenshot...');
+        try {
+            await screenshot({
+                filename: filepath,
+                screen: 0, // Primary screen
+                format: 'png'
+            });
+            console.log('[Screenshot] Screenshot taken successfully');
+        } catch (screenshotError) {
+            console.error('[Screenshot] Error taking screenshot:', screenshotError);
+            console.error('[Screenshot] Error stack:', screenshotError.stack);
+
+            // Try alternative capture method
+            console.log('[Screenshot] Attempting alternative capture method...');
+            await screenshot().then(img => {
+                console.log('[Screenshot] Alternative capture successful, saving to file');
+                fs.writeFileSync(filepath, img);
+                console.log('[Screenshot] Screenshot saved using alternative method');
+            });
+        }
 
         // Restore window state with a slight delay
         setTimeout(() => {
+            console.log('[Screenshot] Restoring window position:', { x: currentX, y: currentY });
             mainWindow.setPosition(currentX, currentY);
             if (wasVisible) {
+                console.log('[Screenshot] Restoring window visibility');
                 mainWindow.show();
             }
-            console.log('Window restored');
+            console.log('[Screenshot] Window restored');
         }, 100);
 
         // Clean up old screenshots if needed
         if (screenshotCounter >= MAX_SCREENSHOTS) {
             screenshotCounter = 0;
-            console.log('Max screenshots reached, cleaning up old ones');
+            console.log('[Screenshot] Max screenshots reached, cleaning up old ones');
             await cleanupOldScreenshots();
         }
 
+        // Add screenshot to tracked paths
         screenshotPaths.push(filepath);
-        console.log('Added screenshot path to tracked paths');
+        console.log('[Screenshot] Added screenshot path to tracked paths:', filepath);
 
         // Verify the file exists
         if (fs.existsSync(filepath)) {
-            console.log('Screenshot file verified to exist');
+            console.log('[Screenshot] Screenshot file verified to exist');
             const stats = fs.statSync(filepath);
-            console.log('File size:', stats.size, 'bytes');
+            console.log('[Screenshot] File size:', stats.size, 'bytes');
+
+            // Verify file is not empty or corrupt
+            if (stats.size < 100) {
+                console.error('[Screenshot] Warning: Screenshot file is suspiciously small:', stats.size, 'bytes');
+            }
         } else {
-            console.warn('Warning: Screenshot file does not exist at expected path');
+            console.error('[Screenshot] Error: Screenshot file does not exist at expected path');
+            throw new Error('Screenshot file does not exist after capture');
         }
 
         return filepath;
     } catch (error) {
-        console.error('Screenshot error:', error);
-        console.error('Error stack:', error.stack);
+        console.error('[Screenshot] Fatal error during screenshot capture:', error);
+        console.error('[Screenshot] Error stack:', error.stack);
         throw error;
     }
 }
@@ -118,21 +148,23 @@ async function captureScreenshot() {
  * Clean up old screenshots
  */
 async function cleanupOldScreenshots() {
-    console.log('cleanupOldScreenshots called');
+    console.log('[Screenshot] cleanupOldScreenshots called');
     try {
+        console.log('[Screenshot] Number of paths to clean up:', screenshotPaths.length);
         for (const filepath of screenshotPaths) {
-            console.log('Checking filepath:', filepath);
+            console.log('[Screenshot] Checking filepath:', filepath);
             if (await fs.pathExists(filepath)) {
-                console.log('Removing file:', filepath);
+                console.log('[Screenshot] Removing file:', filepath);
                 await fs.remove(filepath);
             } else {
-                console.log('File no longer exists:', filepath);
+                console.log('[Screenshot] File no longer exists:', filepath);
             }
         }
         screenshotPaths = [];
-        console.log('Screenshot paths array cleared');
+        console.log('[Screenshot] Screenshot paths array cleared');
     } catch (error) {
-        console.error('Error cleaning up screenshots:', error);
+        console.error('[Screenshot] Error cleaning up screenshots:', error);
+        console.error('[Screenshot] Error stack:', error.stack);
     }
 }
 
@@ -141,8 +173,13 @@ async function cleanupOldScreenshots() {
  * @returns {Array<string>} Array of screenshot paths
  */
 function getAllScreenshots() {
-    console.log('getAllScreenshots called');
+    console.log('[Screenshot] getAllScreenshots called');
     try {
+        if (!fs.existsSync(screenshotsDir)) {
+            console.error('[Screenshot] Screenshots directory does not exist:', screenshotsDir);
+            return [];
+        }
+
         const files = fs.readdirSync(screenshotsDir)
             .filter(file => file.startsWith('screenshot_'))
             .sort((a, b) => {
@@ -153,10 +190,21 @@ function getAllScreenshots() {
             })
             .map(file => path.join(screenshotsDir, file));
 
-        console.log('Found', files.length, 'screenshot files');
+        console.log('[Screenshot] Found', files.length, 'screenshot files');
+        files.forEach((file, index) => {
+            console.log(`[Screenshot] File ${index + 1}:`, file);
+            if (fs.existsSync(file)) {
+                const stats = fs.statSync(file);
+                console.log(`[Screenshot] File ${index + 1} size:`, stats.size, 'bytes');
+            } else {
+                console.error(`[Screenshot] File ${index + 1} does not exist:`, file);
+            }
+        });
+
         return files;
     } catch (error) {
-        console.error('Error getting screenshots:', error);
+        console.error('[Screenshot] Error getting screenshots:', error);
+        console.error('[Screenshot] Error stack:', error.stack);
         return [];
     }
 }
@@ -165,16 +213,26 @@ function getAllScreenshots() {
  * Reset and clear all screenshots
  */
 async function resetScreenshots() {
-    console.log('resetScreenshots called');
+    console.log('[Screenshot] resetScreenshots called');
     try {
         const files = getAllScreenshots();
-        console.log('Removing', files.length, 'screenshot files');
-        await Promise.all(files.map(file => fs.remove(file)));
+        console.log('[Screenshot] Removing', files.length, 'screenshot files');
+
+        for (const file of files) {
+            try {
+                console.log('[Screenshot] Removing file:', file);
+                await fs.remove(file);
+            } catch (removeError) {
+                console.error('[Screenshot] Error removing file:', file, removeError);
+            }
+        }
+
         screenshotCounter = 0;
         screenshotPaths = [];
-        console.log('All screenshots cleared');
+        console.log('[Screenshot] All screenshots cleared');
     } catch (error) {
-        console.error('Error resetting screenshots:', error);
+        console.error('[Screenshot] Error resetting screenshots:', error);
+        console.error('[Screenshot] Error stack:', error.stack);
     }
 }
 

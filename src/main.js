@@ -5,6 +5,9 @@ const { initAI, setApiKey, getCurrentProvider, extractProblemFromScreenshots, ge
 const { exec } = require('child_process');
 const fs = require('fs');
 
+// App name
+const APP_NAME = 'myapp';
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
   app.quit();
@@ -15,7 +18,7 @@ let mainWindow;
 let isVisible = true;
 let isHiddenFromCapture = false;
 
-// Path to Invisiwind executable
+// Path to Invisiwind executable - updated for production packaging
 const invisiwindPath = app.isPackaged
   ? path.join(process.resourcesPath, 'Invisiwind.exe')
   : path.join(__dirname, '..', 'Invisiwind.exe');
@@ -24,9 +27,9 @@ const invisiwindPath = app.isPackaged
 const alternativePaths = [
   path.join(__dirname, '..', 'Invisiwind.exe'),
   path.join(app.getAppPath(), 'Invisiwind.exe'),
-  path.join(path.dirname(app.getPath('exe')), 'Invisiwind.exe')
+  path.join(path.dirname(app.getPath('exe')), 'Invisiwind.exe'),
+  path.join(app.getPath('appData'), APP_NAME, 'Invisiwind.exe')
 ];
-
 
 // Helper function to find the Invisiwind executable
 function findInvisiwindExecutable() {
@@ -105,76 +108,83 @@ let aiInitialized = false;
 
 function createWindow() {
   console.log('Creating application window...');
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  console.log('Screen dimensions:', { width, height });
+  try {
+    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+    console.log('Screen dimensions:', { width, height });
 
-  // Create the browser window with maximum stealth settings
-  mainWindow = new BrowserWindow({
-    transparent: true,
-    frame: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    hasShadow: false,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      enableRemoteModule: true,
-      preload: path.join(__dirname, 'preload.js')
-    },
-    // Enhanced stealth settings
-    backgroundColor: '#00000000',
-    opacity: 0.9,
-    focusable: false,
-    // Maximum stealth configuration
-    type: 'toolbar',
-    titleBarStyle: 'hidden',
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    show: false, // Start hidden
-    width: Math.round(width * 0.4),
-    height: Math.round(height * 0.8)
-  });
+    // Create the browser window with maximum stealth settings
+    mainWindow = new BrowserWindow({
+      transparent: true,
+      frame: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        enableRemoteModule: true,
+        preload: path.join(__dirname, 'preload.js'),
+        devTools: !app.isPackaged // Only enable DevTools in development
+      },
+      // Enhanced stealth settings
+      backgroundColor: '#00000000',
+      opacity: 0.9,
+      focusable: false,
+      // Maximum stealth configuration
+      type: 'toolbar',
+      titleBarStyle: 'hidden',
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      show: false, // Start hidden
+      width: Math.round(width * 0.4),
+      height: Math.round(height * 0.8),
+      title: APP_NAME
+    });
 
-  // Enhanced stealth mode
-  // mainWindow.setIgnoreMouseEvents(true, { forward: true });
-  mainWindow.setAlwaysOnTop(true, 'pop-up-menu', 1);
+    // Enhanced stealth mode
+    // mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    mainWindow.setAlwaysOnTop(true, 'pop-up-menu', 1);
 
-  if (process.platform === 'darwin') {
-    mainWindow.setWindowButtonVisibility(false);
-    app.dock.hide(); // Hide from dock on macOS
-  }
-
-  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-
-  // Prevent focus stealing
-  mainWindow.on('focus', () => {
-    if (!isVisible) {
-      mainWindow.hide();
+    if (process.platform === 'darwin') {
+      mainWindow.setWindowButtonVisibility(false);
+      app.dock.hide(); // Hide from dock on macOS
     }
-  });
 
-  // Load the app
-  mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  // Show window only after it's fully loaded
-  mainWindow.webContents.on('did-finish-load', () => {
-    if (isVisible) {
-      mainWindow.show();
+    // Prevent focus stealing
+    mainWindow.on('focus', () => {
+      if (!isVisible) {
+        mainWindow.hide();
+      }
+    });
+
+    // Load the app
+    mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+
+    // Show window only after it's fully loaded
+    mainWindow.webContents.on('did-finish-load', () => {
+      if (isVisible) {
+        mainWindow.show();
+      }
+    });
+
+    // Position window on the right side by default
+    positionWindow(mainWindow, 'right');
+
+    // Initialize AI service
+    if (!aiInitialized) {
+      console.log('Initializing AI services from createWindow...');
+      initAI();
+      aiInitialized = true;
     }
-  });
 
-  // Position window on the right side by default
-  positionWindow(mainWindow, 'right');
-
-  // Initialize AI service
-  if (!aiInitialized) {
-    console.log('Initializing AI services from createWindow...');
-    initAI();
-    aiInitialized = true;
+    console.log('Window creation complete');
+  } catch (error) {
+    console.error('Failed to create window:', error);
+    app.quit();
   }
-
-  console.log('Window creation complete');
 }
 
 // Position window function (left, right, top, bottom)
@@ -240,20 +250,27 @@ function moveWindow(direction) {
 
 // App ready event
 app.whenReady().then(() => {
-  console.log('Application ready, creating window...');
-  createWindow();
+  try {
+    console.log('Application ready, creating window...');
+    createWindow();
 
-  // Hide application from screen recording
-  hideFromScreenCapture();
-  isHiddenFromCapture = true;
+    // Hide application from screen recording
+    hideFromScreenCapture();
+    isHiddenFromCapture = true;
 
-  // Register global shortcuts for key functionality
-  console.log('Registering global shortcuts...');
+    // Register global shortcuts for key functionality
+    console.log('Registering global shortcuts...');
 
-  // Toggle visibility (Ctrl+B)
-  globalShortcut.register('CommandOrControl+B', () => {
-    toggleVisibility();
-  });
+    // Toggle visibility (Ctrl+B)
+    globalShortcut.register('CommandOrControl+B', () => {
+      toggleVisibility();
+    });
+  } catch (error) {
+    console.error('Error during application initialization:', error);
+    if (app.isPackaged) {
+      app.quit();
+    }
+  }
 
   // Toggle hiding from capture (Ctrl+Alt+H)
   globalShortcut.register('CommandOrControl+Alt+H', () => {
@@ -491,9 +508,23 @@ app.on('activate', () => {
   }
 });
 
-// Unregister all shortcuts when app is about to quit
+// Cleanup when app is about to quit
 app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
+  try {
+    console.log('Application shutting down, cleaning up...');
+
+    // Make sure app is visible in screen capture when closing
+    if (isHiddenFromCapture) {
+      showInScreenCapture();
+    }
+
+    // Unregister all shortcuts
+    globalShortcut.unregisterAll();
+
+    console.log('Application cleanup complete');
+  } catch (error) {
+    console.error('Error during application cleanup:', error);
+  }
 });
 
 // IPC events for communication between renderer and main processes
