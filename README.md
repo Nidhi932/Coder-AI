@@ -1,4 +1,4 @@
-# myapp
+# Coder-AI
 
 A stealth application for capturing and analyzing screenshots.
 
